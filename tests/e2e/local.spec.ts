@@ -208,3 +208,57 @@ test("polling has one active request and cannot overwrite a completed mutation o
     page.getByRole("button", { name: "Открыть локальный профиль" }),
   ).toBeVisible();
 });
+
+test("an earlier deadline requires input and preserves already scheduled events", async ({
+  page,
+}) => {
+  test.setTimeout(45000);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Идеи", exact: true }).click();
+  await page
+    .locator(".scenario-card")
+    .filter({
+      has: page.getByRole("heading", {
+        name: "Подготовиться к экзамену",
+        exact: true,
+      }),
+    })
+    .getByRole("button", { name: "Начать сценарий", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Готово", exact: true }),
+  ).toBeVisible({ timeout: 20000 });
+  const snapshot = async () => (await page.request.get("/api/local")).json();
+  const before = await snapshot();
+  const taskId = before.state.tasks[0].id;
+  const events = before.local.events.filter(
+    (event: { taskId: string; status: string }) =>
+      event.taskId === taskId && event.status === "active",
+  );
+  expect(events.length).toBeGreaterThanOrEqual(4);
+  const deadline = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const response = await page.request.post("/api/local", {
+    headers: { Origin: new URL(page.url()).origin },
+    data: { action: "schedule", taskId, deadline },
+  });
+  expect(response.status()).toBe(200);
+  await expect
+    .poll(
+      async () =>
+        (await snapshot()).local.plans.find(
+          (plan: { taskId: string }) => plan.taskId === taskId,
+        )?.phase,
+      { timeout: 15000 },
+    )
+    .toBe("needs_input");
+  const after = await snapshot();
+  expect(
+    after.local.events.filter(
+      (event: { taskId: string }) => event.taskId === taskId,
+    ),
+  ).toEqual(events);
+  expect(
+    after.local.plans.find((plan: { taskId: string }) => plan.taskId === taskId)
+      .message,
+  ).toContain("после срока");
+});

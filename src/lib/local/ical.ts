@@ -81,9 +81,10 @@ export function busyIntervals(
         exhausted = true;
         break;
       }
-      const occurrence = event.getOccurrenceDetails(next);
+      // The iterator is ordered by recurrence ID; exception start dates can move
+      // in either direction and must not terminate expansion of the series.
       const at = instant(
-        occurrence.startDate,
+        next,
         timezone,
         c.getFirstProperty("dtstart")?.getParameter("tzid") as
           string | undefined,
@@ -92,6 +93,7 @@ export function busyIntervals(
         exhausted = true;
         break;
       }
+      const occurrence = event.getOccurrenceDetails(next);
       add(occurrence.item, occurrence.startDate, occurrence.endDate);
     }
     if (!exhausted)

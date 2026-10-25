@@ -329,6 +329,10 @@ export async function runAgentJob(job: AgentJob) {
   const incomplete = activeSteps(task).filter(
     (s) => !task!.completed.includes(s.id),
   );
+  const effectiveDeadline = meta.explicitDeadline || meta.goal.deadline;
+  const deadlineEnd = effectiveDeadline
+    ? deadlineInstant(effectiveDeadline, state.profile.timezone)
+    : Infinity;
   const slots: Slot[] = [];
   let cursor = now;
   for (let index = 0; index < incomplete.length; index++) {
@@ -336,6 +340,10 @@ export async function runAgentJob(job: AgentJob) {
     const existing = currentLinks.find((l) => l.step_id === step.id);
     if (existing?.status === "external_deleted") continue;
     if (existing?.status === "active") {
+      if (Date.parse(existing.end) > deadlineEnd)
+        throw new NoFreeTime(
+          "Существующее событие заканчивается после срока задачи. События сохранены; измените их время в календаре или уточните срок.",
+        );
       if (
         Date.parse(existing.start) < cursor &&
         Date.parse(existing.end) > now &&
@@ -356,7 +364,7 @@ export async function runAgentJob(job: AgentJob) {
         currentLinks.find((l) => l.step_id === s.id && l.status === "active"),
       )
       .find(Boolean);
-    let deadline = meta.explicitDeadline || meta.goal.deadline;
+    let deadline = effectiveDeadline;
     if (nextAnchor) {
       const latest =
         Date.parse(nextAnchor.start) - settings.breakMinutes * 60000;

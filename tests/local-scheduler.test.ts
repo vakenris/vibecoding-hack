@@ -159,3 +159,70 @@ describe("iCalendar busy expansion and ownership", () => {
     );
   });
 });
+
+it.each([
+  { zone: "UTC", stamp: "", suffix: "Z", hour: "09" },
+  {
+    zone: "Europe/Berlin",
+    stamp: ";TZID=Europe/Berlin",
+    suffix: "",
+    hour: "08",
+  },
+])(
+  "keeps later recurrences when the first exception moves beyond the horizon ($zone)",
+  ({ zone, stamp, suffix, hour }) => {
+    const data = calendar(
+      [
+        event(
+          `UID:moved-first\r\nDTSTART${stamp}:20261026T090000${suffix}\r\nDTEND${stamp}:20261026T100000${suffix}\r\nRRULE:FREQ=DAILY;COUNT=5`,
+        ),
+        event(
+          `UID:moved-first\r\nRECURRENCE-ID${stamp}:20261026T090000${suffix}\r\nDTSTART${stamp}:20261102T090000${suffix}\r\nDTEND${stamp}:20261102T100000${suffix}`,
+        ),
+      ].join("\r\n"),
+    );
+    const busy = busyIntervals(
+      data,
+      at("2026-10-26T00:00:00Z"),
+      at("2026-10-31T00:00:00Z"),
+      zone,
+    );
+    expect(
+      busy.map((interval) => new Date(interval.start).toISOString()),
+    ).toEqual(
+      [27, 28, 29, 30].map((day) => `2026-10-${day}T${hour}:00:00.000Z`),
+    );
+    const [slot] = scheduleSteps({
+      timezone: zone,
+      now: at(`2026-10-27T${hour}:00:00Z`),
+      busy,
+      settings: defaultSchedule,
+      steps: [step("new")],
+    });
+    expect(at(slot.start)).toBeGreaterThanOrEqual(
+      busy[0].end + defaultSchedule.breakMinutes * 60000,
+    );
+  },
+);
+it("includes an exception moved inside the horizon from a later recurrence", () => {
+  const data = calendar(
+    [
+      event(
+        "UID:moved-back\r\nDTSTART:20261026T090000Z\r\nDTEND:20261026T100000Z\r\nRRULE:FREQ=DAILY;COUNT=10",
+      ),
+      event(
+        "UID:moved-back\r\nRECURRENCE-ID:20261102T090000Z\r\nDTSTART:20261027T120000Z\r\nDTEND:20261027T130000Z",
+      ),
+    ].join("\r\n"),
+  );
+  const busy = busyIntervals(
+    data,
+    at("2026-10-26T00:00:00Z"),
+    at("2026-10-29T00:00:00Z"),
+    "UTC",
+  );
+  expect(busy).toContainEqual({
+    start: at("2026-10-27T12:00:00Z"),
+    end: at("2026-10-27T13:00:00Z"),
+  });
+});

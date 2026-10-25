@@ -148,6 +148,10 @@ export async function executeLocal(input: z.infer<typeof localInputSchema>) {
           .get(input.taskId) as { meta: string };
         const meta = JSON.parse(row.meta) as PlanMeta;
         delete meta.goal;
+        // Step IDs and explicit choices stay stable, but timing estimates and
+        // their explanation depend on the updated constraints/deadline.
+        delete meta.estimates;
+        delete meta.explanation;
         database()
           .prepare("UPDATE task_plans SET meta=? WHERE task_id=?")
           .run(JSON.stringify(meta), input.taskId);
