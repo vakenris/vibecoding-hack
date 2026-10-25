@@ -12,11 +12,13 @@ import { authenticate } from "@/app/actions";
 import { Brand, CategoryIcon, Spinner } from "./ui";
 import { AuthTree } from "./auth-tree";
 export function AuthScreen({
+  local,
   cloud,
   error,
   onDemo,
   onLogin,
 }: {
+  local: boolean;
   cloud: boolean;
   error: string;
   onDemo: () => void;
@@ -66,6 +68,17 @@ export function AuthScreen({
         <AuthTree />
       </section>
       <section className="auth-form-panel">
+        {local && (
+          <div className="auth-form">
+            <p className="form-intro">
+              Локальный профиль хранится на этом компьютере. Регистрация и
+              Supabase не нужны.
+            </p>
+            <button type="button" className="auth-submit" onClick={onLogin}>
+              Открыть локальный профиль <ArrowRight size={18} />
+            </button>
+          </div>
+        )}
         <form
           onSubmit={submit}
           className="auth-form"
@@ -155,7 +168,7 @@ export function AuthScreen({
           <button
             className="auth-submit"
             type="submit"
-            disabled={busy || !cloud}
+            disabled={busy || !cloud || local}
           >
             {busy ? (
               <Spinner />

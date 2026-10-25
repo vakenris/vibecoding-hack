@@ -25,6 +25,10 @@ test("two scenarios, feedback and persistence", async ({ page }) => {
   await openScenario(page, "Подготовиться к экзамену");
   await page.getByRole("button", { name: /Готовиться самостоятельно/ }).click();
   await page.getByRole("button", { name: /Есть неделя или больше/ }).click();
+  await page
+    .getByRole("button", { name: /Тест или письменные задачи/ })
+    .click();
+  await page.getByRole("button", { name: /Пробный вариант на время/ }).click();
   await expect(
     page.getByRole("heading", { name: "Теперь — по шагам" }),
   ).toBeVisible();
@@ -34,16 +38,17 @@ test("two scenarios, feedback and persistence", async ({ page }) => {
   await expect(
     page.getByText(/Ближайшее действие: Собрать список тем/),
   ).toBeVisible();
-  for (const title of [
-    "Собрать список тем",
-    "Распределить темы по дням",
-    "Пройти пробный вариант",
-  ])
-    await page.getByRole("button", { name: `Выполнено: ${title}` }).click();
-  await expect(page.getByRole("progressbar")).toHaveAttribute(
-    "aria-valuenow",
-    "100",
-  );
+  for (const button of await page
+    .getByRole("button", { name: /^Выполнено:/ })
+    .all())
+    await button.click();
+  await expect(
+    page.getByRole("checkbox", {
+      name: "Сделано: Подготовиться к экзамену",
+      exact: true,
+    }),
+  ).toBeChecked();
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
   await page
     .getByLabel("Что получилось и что было сложно?")
     .fill("Разобрал сложные темы");
@@ -52,25 +57,44 @@ test("two scenarios, feedback and persistence", async ({ page }) => {
     page.getByRole("heading", { name: "Результат сохранён" }),
   ).toBeVisible();
   await openScenario(page, "Первая самостоятельная стирка");
-  await page.getByRole("button", { name: /В стиральной машине/ }).click();
   await page.getByRole("button", { name: /Обычные повседневные вещи/ }).click();
-  for (const title of [
-    "Проверить ярлыки и карманы",
-    "Выбрать режим по ярлыку",
-    "Добавить средство и запустить стирку",
-  ])
-    await page.getByRole("button", { name: `Выполнено: ${title}` }).click();
+  await page.getByRole("button", { name: /^30 °C/ }).click();
+  await expect(
+    page.getByText(/Сильные загрязнения могут отстираться хуже/),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: /Есть пятна или сильное загрязнение/ })
+    .click();
+  await page.getByRole("button", { name: /Горизонтально по ярлыку/ }).click();
+  for (const button of await page
+    .getByRole("button", { name: /^Выполнено:/ })
+    .all())
+    await button.click();
   await page.getByRole("button", { name: "Сохранить результат" }).click();
   await page.reload();
   await page.getByRole("button", { name: "Попробовать демо" }).click();
   await page
     .getByRole("button", { name: "Открыть мой профиль", exact: true })
     .click();
-  await expect(page.getByText("100 баллов")).toBeVisible();
   await expect(
-    page.getByText("Делаю самостоятельно", { exact: true }),
-  ).toHaveCount(2);
-  await expect(page.getByText("Получено", { exact: true })).toHaveCount(2);
+    page.getByRole("heading", { name: "Мой профиль" }),
+  ).toBeVisible();
+  await expect(page.locator(".achievement")).toHaveCount(5);
+  await expect(page.locator(".achievement.earned")).toHaveCount(3);
+  await expect(page.locator(".points-pill, .skill-card")).toHaveCount(0);
+  await page.getByRole("button", { name: "Мои задачи" }).click();
+  await expect(
+    page.getByRole("checkbox", {
+      name: "Сделано: Подготовиться к экзамену",
+      exact: true,
+    }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("checkbox", {
+      name: "Сделано: Первая самостоятельная стирка",
+      exact: true,
+    }),
+  ).toBeChecked();
   expect(errors).toEqual([]);
 });
 test("calendar only filters dates and tasks come from the main question", async ({
@@ -112,6 +136,14 @@ test("calendar only filters dates and tasks come from the main question", async 
   await page.getByRole("textbox", { name: "Найти задачу" }).fill("библиотеку");
   await expect(page.locator(".task-row")).toHaveCount(1);
   await expect(page.locator(".task-row")).toContainText("Учёба и карьера");
+  const done = page.getByRole("checkbox", {
+    name: "Сделано: Записаться в библиотеку",
+    exact: true,
+  });
+  await done.check();
+  await expect(done).toBeChecked();
+  await done.uncheck();
+  await expect(done).not.toBeChecked();
 });
 test("custom problem waits for live AI and never pretends to generate a tree", async ({
   page,
@@ -127,7 +159,11 @@ test("custom problem waits for live AI and never pretends to generate a tree", a
   await expect(
     page.getByRole("button", { name: "Построить дерево решений" }),
   ).toBeDisabled();
-  await expect(page.getByText(/Индивидуальное дерево требует/)).toBeVisible();
+  await expect(
+    page.getByText(
+      /AI настроен на сервере|Для индивидуальных деревьев и рекомендаций нужен/,
+    ),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Идеи", exact: true }).click();
   await expect(
     page.getByText("Подумать о покупке квартиры", { exact: true }),
@@ -155,6 +191,10 @@ test("responsive visual checkpoints have no horizontal overflow", async ({
   await openScenario(page, "Подготовиться к экзамену");
   await page.getByRole("button", { name: /Готовиться самостоятельно/ }).click();
   await page.getByRole("button", { name: /Есть неделя или больше/ }).click();
+  await page
+    .getByRole("button", { name: /Тест или письменные задачи/ })
+    .click();
+  await page.getByRole("button", { name: /Пробный вариант на время/ }).click();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -171,6 +211,18 @@ test("responsive visual checkpoints have no horizontal overflow", async ({
     path: testInfo.outputPath("tree.png"),
     fullPage: true,
   });
+  await page
+    .getByRole("button", { name: "Открыть мой профиль", exact: true })
+    .click();
+  await page.screenshot({
+    path: testInfo.outputPath("achievements.png"),
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });
 
 test("consent can be disabled and history is cleared without deleting progress", async ({

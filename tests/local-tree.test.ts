@@ -1,0 +1,97 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+vi.mock("../src/lib/ai/provider", () => ({ modelJSON: vi.fn() }));
+import { modelJSON } from "../src/lib/ai/provider";
+import { generateLocalTree } from "../src/lib/local/tree";
+import {
+  applyCommand,
+  emptyState,
+  generatedTreeSchema,
+} from "../src/lib/domain";
+import { scenarios } from "../src/lib/scenarios";
+let dir: string;
+beforeAll(async () => {
+  dir = await mkdtemp(join(tmpdir(), "lifepilot-tree-"));
+  process.env.LOCAL_DATA_DIR = dir;
+});
+afterAll(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
+describe("incremental detailed tree generation", () => {
+  it("resumes completed leaf batches and preserves the full detailed-tree gate", async () => {
+    const state = applyCommand(
+      emptyState(),
+      {
+        type: "scenario",
+        id: "90789ba0-ceac-4056-94c4-ad48c5439866",
+        scenarioId: scenarios[0].id,
+        date: "",
+      },
+      scenarios,
+    );
+    const task = { ...state.tasks[0], tree: undefined };
+    let batches = 0,
+      failed = false;
+    vi.mocked(modelJSON).mockImplementation(
+      async (instruction, input, schema) => {
+        if (instruction.includes("СТРУКТУРУ"))
+          return schema.parse(scenarios[0].tree);
+        batches++;
+        if (batches === 2 && !failed) {
+          failed = true;
+          throw new Error("temporary failure");
+        }
+        const context = input as { plans: { leafId: string }[] };
+        return schema.parse({
+          plans: context.plans.map((plan) => ({
+            leafId: plan.leafId,
+            steps: scenarios[0].tree.nodes
+              .find((node) => node.id === plan.leafId)!
+              .steps.map((step) => ({ title: step.title, hint: step.hint })),
+          })),
+        });
+      },
+    );
+    await expect(
+      generateLocalTree(
+        state,
+        task,
+        {},
+        () => {},
+        () => {},
+      ),
+    ).rejects.toThrow("temporary failure");
+    const result = await generateLocalTree(
+      state,
+      task,
+      {},
+      () => {},
+      () => {},
+    );
+    expect(generatedTreeSchema.safeParse(result).success).toBe(true);
+    expect(
+      vi
+        .mocked(modelJSON)
+        .mock.calls.filter(([instruction]) =>
+          instruction.includes("СТРУКТУРУ"),
+        ),
+    ).toHaveLength(1);
+    expect(
+      result.nodes
+        .filter((node) => !node.children.length)
+        .every(
+          (node) =>
+            node.steps.length >= 4 &&
+            node.steps.every(
+              (step) => step.hint.length >= 20 && step.title !== "Черновик",
+            ),
+        ),
+    ).toBe(true);
+    const leafCount = result.nodes.filter(
+      (node) => !node.children.length,
+    ).length;
+    expect(batches).toBe(Math.ceil(leafCount / 2) + 1);
+  });
+});

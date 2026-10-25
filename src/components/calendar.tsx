@@ -3,14 +3,19 @@ import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type Task, categories, categoryIds, dateKey } from "@/lib/domain";
 import { formatDate } from "@/lib/format";
+import type { LocalEvent } from "@/lib/local/types";
 export function Calendar({
   tasks,
   today,
   onSelect,
+  events = [],
+  timezone,
 }: {
   tasks: Task[];
   today: string;
   onSelect: (date: string) => void;
+  events?: LocalEvent[];
+  timezone?: string;
 }) {
   const [month, setMonth] = useState(() => new Date(today + "T12:00:00"));
   const [selected, setSelected] = useState(today);
@@ -56,14 +61,25 @@ export function Calendar({
           const date = dateKey(new Date(year, m, i + 1));
           const ids = [
             ...new Set(
-              tasks.filter((t) => t.date === date).map((t) => t.category),
+              tasks
+                .filter(
+                  (t) =>
+                    t.date === date ||
+                    events.some(
+                      (e) =>
+                        e.taskId === t.id &&
+                        ["active", "pending"].includes(e.status) &&
+                        dateKey(new Date(e.start), timezone) === date,
+                    ),
+                )
+                .map((t) => t.category),
             ),
           ];
           return (
             <button
               className={`calendar-day ${date === today ? "today" : ""} ${date === selected ? "selected" : ""}`}
               key={date}
-              aria-label={`${formatDate(date)}, задач: ${tasks.filter((t) => t.date === date).length}`}
+              aria-label={`${formatDate(date)}, задач: ${tasks.filter((t) => t.date === date).length}, шагов: ${events.filter((e) => ["active", "pending"].includes(e.status) && dateKey(new Date(e.start), timezone) === date).length}`}
               aria-pressed={date === selected}
               onClick={() => {
                 setSelected(date);

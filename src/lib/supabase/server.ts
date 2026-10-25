@@ -3,21 +3,16 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
-export function cloudConfigured() {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY &&
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-  );
-}
-export function aiConfigured() {
-  return Boolean(
-    process.env.AI_BASE_URL && process.env.AI_MODEL && process.env.AI_API_KEY,
-  );
-}
+import { cloudConfigured } from "../config";
+import { AppError } from "../errors";
+export { cloudConfigured, localMode, aiConfigured } from "../config";
 export async function supabaseServer() {
   if (!cloudConfigured())
-    throw new Error("Облачное хранение ещё не настроено. Откройте демо-режим.");
+    throw new AppError(
+      "CLOUD_CONFIGURATION",
+      "Облачное хранение ещё не настроено. Откройте демо-режим.",
+      503,
+    );
   const store = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,6 +34,12 @@ export async function supabaseServer() {
   );
 }
 export function supabaseAdmin() {
+  if (!cloudConfigured())
+    throw new AppError(
+      "CLOUD_CONFIGURATION",
+      "Облачное хранение ещё не настроено.",
+      503,
+    );
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -51,6 +52,11 @@ export async function requireUser() {
     data: { user },
     error,
   } = await client.auth.getUser();
-  if (error || !user) throw new Error("Войдите в аккаунт, чтобы продолжить.");
+  if (error || !user)
+    throw new AppError(
+      "UNAUTHORIZED",
+      "Войдите в аккаунт, чтобы продолжить.",
+      401,
+    );
   return { user, client };
 }

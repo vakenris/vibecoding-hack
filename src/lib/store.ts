@@ -1,10 +1,12 @@
 import "server-only";
+import { AppError } from "./errors";
 import {
   type AppState,
   type TrustedCommand,
   applyCommand,
   emptyState,
   stateSchema,
+  normalizeState,
 } from "./domain";
 import { scenarios } from "./scenarios";
 import { supabaseAdmin } from "./supabase/server";
@@ -19,13 +21,30 @@ export async function readState(
     .eq("user_id", userId)
     .maybeSingle();
   if (error)
-    throw new Error(
+    throw new AppError(
+      "STORAGE_UNAVAILABLE",
       "Не удалось загрузить данные. Проверьте подключение и миграции Supabase.",
+      503,
+      true,
     );
   if (data) {
     if (data.state.version !== 1)
-      throw new Error("Неподдерживаемая версия данных");
-    return { state: stateSchema.parse(data.state), revision: data.revision };
+      throw new AppError(
+        "STATE_VERSION",
+        "Неподдерживаемая версия данных",
+        500,
+      );
+    const parsed = stateSchema.safeParse(data.state);
+    if (!parsed.success)
+      throw new AppError(
+        "STATE_INVALID",
+        "Сохранённые данные имеют неподдерживаемый формат",
+        500,
+      );
+    return {
+      state: normalizeState(parsed.data, scenarios),
+      revision: data.revision,
+    };
   }
   const state = emptyState();
   const { error: insertError } = await admin
@@ -33,7 +52,12 @@ export async function readState(
     .insert({ user_id: userId, state, revision: 0 });
   if (insertError?.code === "23505") return readState(userId);
   if (insertError)
-    throw new Error("Не удалось создать профиль. Проверьте миграции Supabase.");
+    throw new AppError(
+      "STORAGE_UNAVAILABLE",
+      "Не удалось создать профиль. Проверьте миграции Supabase.",
+      503,
+      true,
+    );
   return { state, revision: 0 };
 }
 export async function mutateState(
@@ -62,8 +86,18 @@ export async function mutateState(
       .eq("revision", revision)
       .select("revision");
     if (error)
-      throw new Error("Не удалось сохранить изменения. Повторите запрос.");
+      throw new AppError(
+        "STORAGE_UNAVAILABLE",
+        "Не удалось сохранить изменения. Повторите запрос.",
+        503,
+        true,
+      );
     if (data?.length) return updated;
   }
-  throw new Error("Данные изменились в другой вкладке. Повторите действие.");
+  throw new AppError(
+    "CONFLICT",
+    "Данные изменились в другой вкладке. Повторите действие.",
+    409,
+    true,
+  );
 }

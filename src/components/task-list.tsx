@@ -1,15 +1,20 @@
 "use client";
-import { ChevronRight, Clock3, CheckCheck } from "lucide-react";
-import { type Task, categories, progress } from "@/lib/domain";
+import { ChevronRight, Clock3 } from "lucide-react";
+import { type Task, categories, isTaskDone } from "@/lib/domain";
 import { CategoryIcon, Tag, Empty } from "./ui";
+import { TaskStatus } from "./task-status";
 import { formatDate } from "@/lib/format";
 export function TaskList({
   tasks,
   onOpen,
+  onToggle,
+  busy,
   empty,
 }: {
   tasks: Task[];
   onOpen: (id: string) => void;
+  onToggle: (id: string, done: boolean) => void;
+  busy: boolean;
   empty: string;
 }) {
   if (!tasks.length)
@@ -20,42 +25,40 @@ export function TaskList({
     );
   return (
     <div className="task-list">
-      {tasks.map((t) => (
-        <button className="task-row" key={t.id} onClick={() => onOpen(t.id)}>
-          <span
-            className="task-symbol"
-            style={{
-              background: categories[t.category].tint,
-              color: categories[t.category].color,
-            }}
-          >
-            <CategoryIcon id={t.category} size={25} />
-          </span>
-          <span className="task-copy">
-            <strong>{t.title}</strong>
-            <span className="task-meta">
-              <Tag id={t.category} />
-              <span>
-                <Clock3 size={13} />
-                {t.date ? formatDate(t.date) : "Без даты"}
-                {t.time ? `, ${t.time}` : ""}
-              </span>
-              {t.feedback && (
-                <span className="result-badge">
-                  <CheckCheck size={14} />
-                  Результат сохранён
+      {tasks.map((task) => (
+        <div
+          className={`task-row ${isTaskDone(task) ? "task-done" : ""}`}
+          key={task.id}
+        >
+          <button className="task-open" onClick={() => onOpen(task.id)}>
+            <span
+              className="task-symbol"
+              style={{
+                background: categories[task.category].tint,
+                color: categories[task.category].color,
+              }}
+            >
+              <CategoryIcon id={task.category} size={25} />
+            </span>
+            <span className="task-copy">
+              <strong>{task.title}</strong>
+              <span className="task-meta">
+                <Tag id={task.category} />
+                <span>
+                  <Clock3 size={13} />
+                  {task.date ? formatDate(task.date) : "Без даты"}
+                  {task.time ? `, ${task.time}` : ""}
                 </span>
-              )}
+              </span>
             </span>
-          </span>
-          <span className="task-progress">
-            <span className="mini-track">
-              <span style={{ width: `${progress(t)}%` }} />
-            </span>
-            <span>{progress(t)}%</span>
-          </span>
-          <ChevronRight size={19} className="muted" />
-        </button>
+            <ChevronRight size={19} className="muted" />
+          </button>
+          <TaskStatus
+            task={task}
+            busy={busy}
+            onChange={(done) => onToggle(task.id, done)}
+          />
+        </div>
       ))}
     </div>
   );

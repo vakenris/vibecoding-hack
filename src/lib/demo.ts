@@ -14,6 +14,8 @@ export function demoState(): AppState {
     reminder: true,
     source: "scenario",
     scenarioId: s.id,
+    scenarioVersion: s.version,
+    done: false,
     tree: structuredClone(s.tree),
     selected: {},
     completed: [],
