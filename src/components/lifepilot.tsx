@@ -348,7 +348,6 @@ export function LifePilot(props: LifePilotProps) {
         </main>
         <footer className="app-footer">
           <span>LifePilot</span>
-          <span>Каждый шаг имеет значение.</span>
         </footer>
       </div>
       {confirmDelete && (

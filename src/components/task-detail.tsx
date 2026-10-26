@@ -271,10 +271,7 @@ export function TaskDetail({
             <BrandArt />
             <h1>{task.title}</h1>
           </div>
-          <p>
-            {task.description ||
-              "Из одного вопроса может вырасти понятный план."}
-          </p>
+          {task.description && <p>{task.description}</p>}
           {!localSnapshot && (
             <form
               className="clarification-form"

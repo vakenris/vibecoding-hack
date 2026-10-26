@@ -262,3 +262,99 @@ test("an earlier deadline requires input and preserves already scheduled events"
       .message,
   ).toContain("после срока");
 });
+
+test("attachment picker, preview and replacement stay readable", async ({
+  page,
+}, info) => {
+  test.setTimeout(45000);
+  await page.goto("/");
+  const picker = page.getByLabel("Прикрепить документ", { exact: true });
+  const file = {
+    name: "План подготовки к экзамену.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.7\nfixture selection only"),
+  };
+  await expect(picker).toBeHidden();
+  for (const width of [360, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.screenshot({
+      path: info.outputPath(`attachment-empty-${width}.png`),
+      fullPage: true,
+    });
+    const chooser = page.waitForEvent("filechooser");
+    await page
+      .getByRole("button", { name: "Прикрепить файл", exact: true })
+      .click();
+    await (await chooser).setFiles(file);
+    await expect(page.locator(".attachment-file")).toContainText(file.name);
+    await expect(
+      page.getByRole("button", { name: "Заменить файл", exact: true }),
+    ).toBeEnabled();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: info.outputPath(`attachment-selected-${width}.png`),
+      fullPage: true,
+    });
+    await page
+      .getByRole("button", { name: "Убрать вложение", exact: true })
+      .click();
+    await expect(page.locator(".attachment-file")).toHaveCount(0);
+  }
+  await picker.setInputFiles(file);
+  await picker.setInputFiles({
+    name: "wrong.exe",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from("fixture"),
+  });
+  await expect(
+    page.getByText("Выберите PDF, DOCX или TXT", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".attachment-file")).toContainText(file.name);
+  await picker.setInputFiles({
+    name: "empty.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.alloc(0),
+  });
+  await expect(
+    page.getByText("Файл пустой. Выберите другой документ.", { exact: true }),
+  ).toBeVisible();
+  await picker.setInputFiles({
+    name: "large.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.alloc(5 * 1024 * 1024 + 1),
+  });
+  await expect(
+    page.getByText("Файл превышает 5 МБ", { exact: true }),
+  ).toBeVisible();
+  const long = {
+    ...file,
+    name:
+      "Очень-длинное-название-документа-с-ограничениями-и-расписанием-".repeat(
+        2,
+      ) + ".pdf",
+  };
+  await picker.setInputFiles(long);
+  await expect(page.locator(".attachment-file")).toContainText(long.name);
+  await page.setViewportSize({ width: 360, height: 1000 });
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = "32px";
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath("attachment-large-text-360.png"),
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Убрать вложение", exact: true })
+    .click();
+  await picker.setInputFiles(long);
+  await expect(page.locator(".attachment-file")).toContainText(long.name);
+});

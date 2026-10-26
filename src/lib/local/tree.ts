@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { modelJSON } from "../ai/provider";
 import {
+  PROMPT_VERSION,
+  treeStructureGuide,
+  leafPlansGuide,
+} from "../ai/prompts";
+import {
   treeSchema,
   generatedTreeSchema,
   type AppState,
@@ -95,7 +100,7 @@ export async function generateLocalTree(
     clarification: meta.userContext,
   };
   const fingerprint = createHash("sha256")
-    .update(JSON.stringify(context))
+    .update(JSON.stringify({ promptVersion: PROMPT_VERSION, context }))
     .digest("hex");
   const row = database()
     .prepare("SELECT context_hash,draft FROM tree_drafts WHERE task_id=?")
@@ -105,7 +110,7 @@ export async function generateLocalTree(
   else {
     progress("Строю содержательные уровни выбора");
     const structure = await modelJSON(
-      'Создай только СТРУКТУРУ подробного дерева решений: цель — четыре последовательных решения от корня до КАЖДОГО листа, допустимо 3–5. На каждом решении 2 реальных варианта, всего 15–63 узла. Не обрывай часть веток раньше третьего решения. У внутренних узлов question — содержательный вопрос следующего уровня; дети — ответы на него, зависящие от предыдущих решений. У каждого варианта кроме корня 1–2 конкретных преимущества pros и риска risks. Не повторяй одинаковые уровни и общие фразы. У листьев children пустой; действия будут добавлены отдельно, steps НЕ включай. Все узлы достижимы, имеют одного родителя, без циклов. Формат {"rootId":"root","nodes":[{"id":"root","title":"цель","question":"вопрос","pros":[],"risks":[],"children":["a","b"]},...]}. Короткие уникальные id.',
+      treeStructureGuide,
       context,
       structureSchema,
       4000,
@@ -160,7 +165,7 @@ export async function generateLocalTree(
         "Нужен каждый указанный конечный план",
       );
     const result = await modelJSON(
-      'Создай конечные чек-листы для КАЖДОГО из указанных планов. Верни точные leafId. У каждого листа 4–6 конкретных действий. План должен учитывать ВСЕ решения своего пути и требования цели. В hint дай содержательную инструкцию, что проверить и когда остановиться или сменить способ: 1–3 предложения, минимум 20 символов. Не копируй универсальный чек-лист во все листья. Сроки, цены и часы организаций не придумывай. Для стирки режимы сверяй с ярлыком; для экзамена задания зависят от формата и выбранной проверки. Формат {"plans":[{"leafId":"id","steps":[{"title":"действие","hint":"подробная инструкция"}]}]}.',
+      leafPlansGuide,
       {
         ...context,
         plans: batch.map((leafId) => ({ leafId, path: paths.get(leafId) })),

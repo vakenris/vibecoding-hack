@@ -24,7 +24,7 @@ const ideasSchema = z.object({
     .min(1)
     .max(5),
 });
-import { basePrompt, treeGuide, mentorGuide } from "./prompts";
+import { systemPrompt, treeGuide, mentorGuide, ideasGuide } from "./prompts";
 export class ModelResponseError extends AppError {
   constructor(
     message: string,
@@ -46,6 +46,7 @@ export async function modelJSON<T>(
   maxTokens = 1800,
 ): Promise<T> {
   const { endpoint, timeout, useTool } = aiSettings();
+  const jsonSchema = z.toJSONSchema(schema, { unrepresentable: "any" });
   try {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -58,7 +59,7 @@ export async function modelJSON<T>(
         messages: [
           {
             role: "system",
-            content: `${basePrompt}\n${instruction}${useTool ? "\nВерни результат единственным вызовом lifepilot_result. Это только формат структурированного ответа, внешние действия не выполняются." : ""}`,
+            content: systemPrompt(instruction, jsonSchema, useTool),
           },
           { role: "user", content: `USER_CONTEXT\n${JSON.stringify(context)}` },
         ],
@@ -72,9 +73,7 @@ export async function modelJSON<T>(
                     name: "lifepilot_result",
                     description:
                       "Вернуть проверяемый структурированный результат LifePilot",
-                    parameters: z.toJSONSchema(schema, {
-                      unrepresentable: "any",
-                    }),
+                    parameters: jsonSchema,
                   },
                 },
               ],
@@ -194,8 +193,7 @@ export async function generateTree(
   clarification: string,
 ) {
   return modelJSON(
-    treeGuide +
-      " Учитывай ответы об ограничениях, сроках и желаемом результате.",
+    treeGuide,
     { ...taskContext(state, task), clarification },
     generatedTreeSchema,
     aiSettings().maxTokens,
@@ -214,7 +212,7 @@ export async function mentorReply(
 }
 export async function recommendIdeas(state: AppState) {
   const result = await modelJSON(
-    'Предложи 3 уместные жизненные задачи по интересам и целям пользователя, не дублируя существующие. Не утверждай, что знаешь больше предоставленного. Формат {"ideas":[{"title":"задача","description":"что сделать","reason":"почему предложено","category":"global|career|home|social|money"}]}. category должна быть одним значением из списка.',
+    ideasGuide,
     {
       profile: {
         goals: state.profile.goals,

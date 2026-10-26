@@ -36,7 +36,7 @@ describe("incremental detailed tree generation", () => {
       failed = false;
     vi.mocked(modelJSON).mockImplementation(
       async (instruction, input, schema) => {
-        if (instruction.includes("СТРУКТУРУ"))
+        if (instruction.includes("TASK: tree_structure"))
           return schema.parse(scenarios[0].tree);
         batches++;
         if (batches === 2 && !failed) {
@@ -75,7 +75,7 @@ describe("incremental detailed tree generation", () => {
       vi
         .mocked(modelJSON)
         .mock.calls.filter(([instruction]) =>
-          instruction.includes("СТРУКТУРУ"),
+          instruction.includes("TASK: tree_structure"),
         ),
     ).toHaveLength(1);
     expect(
@@ -94,4 +94,65 @@ describe("incremental detailed tree generation", () => {
     ).length;
     expect(batches).toBe(Math.ceil(leafCount / 2) + 1);
   });
+});
+
+it("rebuilds a partial draft created before prompt versioning", async () => {
+  const { createHash } = await import("node:crypto");
+  const { database } = await import("../src/lib/local/database");
+  const state = applyCommand(
+    emptyState(),
+    {
+      type: "scenario",
+      id: crypto.randomUUID(),
+      scenarioId: scenarios[0].id,
+      date: "",
+    },
+    scenarios,
+  );
+  const task = { ...state.tasks[0], tree: undefined };
+  const legacyHash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        title: task.title,
+        description: task.description,
+        goals: state.profile.goals,
+        deadline: null,
+      }),
+    )
+    .digest("hex");
+  database()
+    .prepare(
+      "INSERT INTO tree_drafts(task_id,context_hash,draft) VALUES(?,?,?)",
+    )
+    .run(task.id, legacyHash, JSON.stringify({ structure: {}, plans: {} }));
+  vi.mocked(modelJSON)
+    .mockClear()
+    .mockImplementation(async (instruction, input, schema) => {
+      if (instruction.includes("TASK: tree_structure"))
+        return schema.parse(scenarios[0].tree);
+      const context = input as { plans: { leafId: string }[] };
+      return schema.parse({
+        plans: context.plans.map(({ leafId }) => ({
+          leafId,
+          steps: scenarios[0].tree.nodes
+            .find((node) => node.id === leafId)!
+            .steps.map(({ title, hint }) => ({ title, hint })),
+        })),
+      });
+    });
+  const result = await generateLocalTree(
+    state,
+    task,
+    {},
+    () => {},
+    () => {},
+  );
+  expect(generatedTreeSchema.safeParse(result).success).toBe(true);
+  expect(
+    vi
+      .mocked(modelJSON)
+      .mock.calls.filter(([instruction]) =>
+        instruction.includes("TASK: tree_structure"),
+      ),
+  ).toHaveLength(1);
 });

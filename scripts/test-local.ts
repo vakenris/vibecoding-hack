@@ -82,7 +82,7 @@ const model = createServer(async (req, res) => {
     return;
   }
   let result;
-  if (instruction.includes("Определи ОДНУ"))
+  if (instruction.includes("TASK: goal"))
     result = {
       title: "Подготовиться к экзамену",
       description: "Повторить темы и решить пробный вариант",
@@ -99,7 +99,7 @@ const model = createServer(async (req, res) => {
       ],
       clarification: null,
     };
-  else if (instruction.includes("Создай конечные чек-листы")) {
+  else if (instruction.includes("TASK: leaf_plans")) {
     result = {
       plans: context.plans.map((plan: { leafId: string }) => ({
         leafId: plan.leafId,
@@ -108,13 +108,13 @@ const model = createServer(async (req, res) => {
           .steps.map((step) => ({ title: step.title, hint: step.hint })),
       })),
     };
-  } else if (instruction.includes("Выбери ОДИН")) {
+  } else if (instruction.includes("TASK: choose_plan")) {
     result = {
       leafId: context.candidates[0].leafId,
       explanation:
         "Выбран путь самостоятельной подготовки с проверкой результата; пользовательские выборы сохранены.",
     };
-  } else if (instruction.includes("Оцени длительность")) {
+  } else if (instruction.includes("TASK: step_estimates")) {
     result = {
       estimates: context.steps.map((step: { id: string }) => ({
         stepId: step.id,
