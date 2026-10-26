@@ -45,24 +45,31 @@ export function aiSettings() {
     );
   }
   const timeout = Number(process.env.AI_TIMEOUT_MS || 45000);
+  const timeoutMax = localMode() ? 180000 : 60000;
   const maxTokens = Number(process.env.AI_MAX_OUTPUT_TOKENS || 16000);
+  const reasoningEffort = process.env.AI_REASONING_EFFORT || undefined;
   if (
     !Number.isFinite(timeout) ||
     timeout < 1000 ||
-    timeout > 60000 ||
+    timeout > timeoutMax ||
     !Number.isInteger(maxTokens) ||
     maxTokens < 4000 ||
-    maxTokens > 24000
+    maxTokens > 24000 ||
+    (reasoningEffort &&
+      !["none", "minimal", "low", "medium", "high", "xhigh", "max"].includes(
+        reasoningEffort,
+      ))
   )
     throw new AppError(
       "AI_CONFIGURATION",
-      "Проверьте AI_TIMEOUT_MS (1000–60000) и AI_MAX_OUTPUT_TOKENS (4000–24000).",
+      `Проверьте AI_TIMEOUT_MS (1000–${timeoutMax}), AI_MAX_OUTPUT_TOKENS (4000–24000) и AI_REASONING_EFFORT.`,
       503,
     );
   return {
     endpoint,
     timeout,
     maxTokens,
+    reasoningEffort,
     useTool: process.env.AI_JSON_MODE === "tool",
   };
 }

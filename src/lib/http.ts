@@ -5,18 +5,38 @@ export async function limitedBody(
   source: Request | Response,
   limit: number,
   oversized = new AppError("PAYLOAD_TOO_LARGE", "Слишком большой запрос", 413),
+  signal?: AbortSignal,
 ) {
   const reader = source.body?.getReader();
   if (!reader) {
     if (Number(source.headers.get("content-length")) > limit) throw oversized;
     return new Uint8Array();
   }
+  let rejectAbort: ((reason: unknown) => void) | undefined;
+  const aborted = signal
+    ? new Promise<never>((_, reject) => {
+        rejectAbort = reject;
+      })
+    : undefined;
+  const abortError = () =>
+    signal?.reason instanceof Error
+      ? signal.reason
+      : new DOMException("The operation was aborted", "AbortError");
+  const onAbort = () => {
+    void reader.cancel(signal?.reason).catch(() => {});
+    rejectAbort?.(abortError());
+  };
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
   try {
     if (Number(source.headers.get("content-length")) > limit) throw oversized;
     const chunks: Uint8Array[] = [];
     let size = 0;
     while (true) {
-      const { value, done } = await reader.read();
+      const read = reader.read();
+      const { value, done } = aborted
+        ? await Promise.race([read, aborted])
+        : await read;
       if (done) break;
       size += value.byteLength;
       if (size > limit) throw oversized;
@@ -30,10 +50,11 @@ export async function limitedBody(
     }
     return result;
   } catch (error) {
-    await reader.cancel().catch(() => {});
+    void reader.cancel().catch(() => {});
     throw error;
   } finally {
-    reader.releaseLock();
+    signal?.removeEventListener("abort", onAbort);
+    if (!signal?.aborted) reader.releaseLock();
   }
 }
 export async function readJSON<T>(

@@ -3,6 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 vi.mock("../src/lib/ai/provider", () => ({ modelJSON: vi.fn() }));
+vi.mock("../src/lib/config", () => ({
+  aiSettings: () => ({ maxTokens: 16000 }),
+}));
 import { modelJSON } from "../src/lib/ai/provider";
 import { generateLocalTree } from "../src/lib/local/tree";
 import {
@@ -78,6 +81,13 @@ describe("incremental detailed tree generation", () => {
           instruction.includes("TASK: tree_structure"),
         ),
     ).toHaveLength(1);
+    expect(
+      vi
+        .mocked(modelJSON)
+        .mock.calls.find(([instruction]) =>
+          instruction.includes("TASK: tree_structure"),
+        )?.[3],
+    ).toBe(16000);
     expect(
       result.nodes
         .filter((node) => !node.children.length)

@@ -11,6 +11,7 @@ beforeEach(() => {
   vi.stubEnv("AI_API_KEY", "test-secret");
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -45,6 +46,19 @@ describe("AI provider boundary (mock transport, no live inference)", () => {
     expect(String(url)).toBe("https://provider.invalid/v1/chat/completions");
     expect(JSON.parse(init.body).messages[1].content).toContain("Экзамен");
     expect(init.redirect).toBe("error");
+  });
+  it("passes configured reasoning effort to the provider", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      Response.json({
+        choices: [{ message: { content: JSON.stringify({ text: "OK" }) } }],
+      }),
+    );
+    vi.stubEnv("AI_REASONING_EFFORT", "low");
+    vi.stubGlobal("fetch", fetch);
+    await expect(modelJSON("", {}, schema)).resolves.toEqual({ text: "OK" });
+    expect(JSON.parse(fetch.mock.calls[0][1].body).reasoning_effort).toBe(
+      "low",
+    );
   });
   it.each(["not-json", '{"wrong":"shape"}'])(
     "rejects malformed output %s",
@@ -232,8 +246,34 @@ it("rejects token truncation even when the returned JSON is valid", async () => 
     ),
   );
   await expect(modelJSON("", {}, schema)).rejects.toMatchObject({
-    temporary: true,
+    retryable: false,
+    code: "AI_OUTPUT_LIMIT",
+    message:
+      "Модель исчерпала лимит вывода до готового JSON. Увеличьте AI_MAX_OUTPUT_TOKENS или сократите запрос.",
   });
+});
+it("enforces the timeout while a provider response body is still streaming", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          pull() {
+            return new Promise(() => {});
+          },
+        }),
+      ),
+    ),
+  );
+  const pending = modelJSON("", {}, schema);
+  const rejection = expect(pending).rejects.toMatchObject({
+    retryable: true,
+    code: "AI_TIMEOUT",
+    status: 504,
+  });
+  await vi.advanceTimersByTimeAsync(45000);
+  await rejection;
 });
 it("makes timeouts retryable without matching error text", async () => {
   vi.stubGlobal(

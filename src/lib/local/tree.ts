@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { modelJSON } from "../ai/provider";
+import { aiSettings } from "../config";
 import {
   PROMPT_VERSION,
   treeStructureGuide,
@@ -113,7 +114,7 @@ export async function generateLocalTree(
       treeStructureGuide,
       context,
       structureSchema,
-      4000,
+      aiSettings().maxTokens,
     );
     check();
     draft = { structure, plans: {} };
